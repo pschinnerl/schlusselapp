@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Schlüsselapp</title>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<style>
+  :root {
+    --green: #2e7d32;
+    --green-light: #4caf50;
+    --green-dark: #1b5e20;
+    --blue: #1565c0;
+    --blue-light: #42a5f5;
+    --yellow: #f9a825;
+    --bg: #f0f4f0;
+    --card: #ffffff;
+    --text: #1a1a1a;
+    --text-light: #666;
+    --border: #dde4dd;
+    --danger: #c62828;
+    --shadow: 0 2px 8px rgba(0,0,0,0.12);
+    --radius: 12px;
+    --nav-h: 64px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+
+  /* SPLASH */
+  #splash { position: fixed; inset: 0; background: linear-gradient(160deg, var(--green-dark) 0%, var(--green) 60%, var(--green-light) 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; transition: opacity 0.6s ease; }
+  #splash.hidden { opacity: 0; pointer-events: none; }
+  .splash-logo { width: 110px; height: 110px; background: rgba(255,255,255,0.15); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-bottom: 28px; font-size: 56px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+  .splash-title { color: #fff; font-size: 26px; font-weight: 700; margin-bottom: 6px; }
+  .splash-sub { color: rgba(255,255,255,0.8); font-size: 15px; margin-bottom: 52px; }
+  #btnStart { background: #fff; color: var(--green-dark); border: none; padding: 18px 56px; border-radius: 50px; font-size: 18px; font-weight: 700; cursor: pointer; box-shadow: 0 6px 24px rgba(0,0,0,0.25); transition: transform 0.15s; }
+  #btnStart:active { transform: scale(0.96); }
+
+  /* APP */
+  #app { display: none; flex-direction: column; height: 100vh; }
+  #app.visible { display: flex; }
+
+  /* HEADER */
+  header { color: #fff; padding: 14px 16px 12px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.2); transition: background 0.3s; }
+  header.tab-keys { background: linear-gradient(135deg, var(--green-dark), var(--green)); }
+  header.tab-locks { background: linear-gradient(135deg, #0d47a1, var(--blue)); }
+  .header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .header-left { display: flex; align-items: center; gap: 10px; }
+  .header-title { font-size: 17px; font-weight: 700; }
+  .header-sub { font-size: 11px; opacity: 0.8; }
+  .header-right { display: flex; align-items: center; gap: 8px; }
+  #syncStatus { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 10px; background: rgba(255,255,255,0.2); color: #fff; white-space: nowrap; }
+  #syncStatus.online  { background: rgba(76,175,80,0.4); }
+  #syncStatus.offline { background: rgba(198,40,40,0.5); }
+  .btn-icon { background: rgba(255,255,255,0.2); border: none; color: #fff; width: 36px; height: 36px; border-radius: 50%; font-size: 17px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .btn-icon:active { background: rgba(255,255,255,0.35); }
+  .search-bar { background: rgba(255,255,255,0.95); border-radius: 10px; display: flex; align-items: center; padding: 0 12px; gap: 8px; }
+  .search-bar input { border: none; background: transparent; width: 100%; padding: 10px 0; font-size: 15px; color: var(--text); outline: none; }
+  .search-icon { font-size: 15px; }
+  .search-clear { background: none; border: none; color: #999; font-size: 18px; cursor: pointer; padding: 4px; }
+
+  /* BOTTOM NAV */
+  .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: var(--nav-h); background: var(--card); border-top: 1px solid var(--border); display: flex; z-index: 100; box-shadow: 0 -2px 12px rgba(0,0,0,0.08); }
+  .nav-btn { flex: 1; background: none; border: none; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #9e9e9e; }
+  .nav-btn.active-keys { color: var(--green-dark); }
+  .nav-btn.active-locks { color: var(--blue); }
+  .nav-icon { font-size: 22px; line-height: 1; }
+  .nav-label { font-size: 11px; font-weight: 600; }
+
+  /* VIEWS */
+  .view { display: none; flex-direction: column; flex: 1; overflow: hidden; padding-bottom: var(--nav-h); }
+  .view.active { display: flex; }
+  .filter-wrap { background: var(--card); border-bottom: 1px solid var(--border); overflow-x: auto; flex-shrink: 0; }
+  .filter-tabs { display: flex; padding: 0 8px; white-space: nowrap; }
+  .filter-tab { background: none; border: none; padding: 10px 14px; font-size: 13px; color: var(--text-light); cursor: pointer; border-bottom: 3px solid transparent; font-weight: 500; flex-shrink: 0; }
+  .filter-tab.active-k { color: var(--green-dark); border-bottom-color: var(--green); font-weight: 700; }
+  .filter-tab.active-l { color: var(--blue); border-bottom-color: var(--blue); font-weight: 700; }
+  .stats-bar { display: flex; gap: 8px; padding: 8px 12px; background: var(--card); border-bottom: 1px solid var(--border); flex-shrink: 0; overflow-x: auto; }
+  .stat-chip { background: var(--bg); border-radius: 20px; padding: 4px 12px; font-size: 12px; color: var(--text-light); font-weight: 500; white-space: nowrap; }
+  .stat-chip span { font-weight: 700; }
+  .stat-chip span.g { color: var(--green-dark); }
+  .stat-chip span.b { color: var(--blue); }
+  .stat-chip span.o { color: #e65100; }
+  .list-container { flex: 1; overflow-y: auto; padding: 8px; }
+
+  /* KEY CARDS */
+  .key-card { background: var(--card); border-radius: var(--radius); margin-bottom: 8px; box-shadow: var(--shadow); overflow: hidden; cursor: pointer; border-left: 4px solid var(--green); }
+  .key-card:active { opacity: 0.85; }
+  .key-card.returned { border-left-color: #bdbdbd; opacity: 0.65; }
+  .key-card.deposit { border-left-color: var(--yellow); }
+  .card-inner { padding: 12px 14px; display: flex; align-items: center; gap: 12px; }
+  .card-avatar { width: 42px; height: 42px; border-radius: 50%; background: var(--green); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 16px; font-weight: 700; flex-shrink: 0; }
+  .key-card.returned .card-avatar { background: #bdbdbd; }
+  .key-card.deposit .card-avatar { background: var(--yellow); color: #333; }
+  .card-content { flex: 1; min-width: 0; }
+  .card-name { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card-type { font-size: 13px; color: var(--text-light); margin-top: 2px; }
+  .card-meta { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+  .badge { font-size: 11px; padding: 2px 7px; border-radius: 10px; background: var(--bg); color: var(--text-light); font-weight: 500; }
+  .badge.num { background: #e8f5e9; color: var(--green-dark); }
+  .badge.date { background: #e3f2fd; color: #1565c0; }
+  .badge.pfand { background: #fff8e1; color: #e65100; }
+  .badge.warn { background: #ffebee; color: var(--danger); }
+  .badge.info { background: #e8eaf6; color: #3949ab; }
+  .card-arrow { color: #ccc; font-size: 18px; flex-shrink: 0; }
+
+  /* LOCK CARDS */
+  .lock-card { background: var(--card); border-radius: var(--radius); margin-bottom: 8px; box-shadow: var(--shadow); cursor: pointer; border-left: 4px solid var(--blue); }
+  .lock-card:active { opacity: 0.85; }
+  .lock-card.warn-card { border-left-color: #ff6f00; }
+  .lock-card.ok-card { border-left-color: var(--green); }
+  .lock-inner { padding: 12px 14px; display: flex; align-items: center; gap: 12px; }
+  .lock-num { width: 42px; height: 42px; border-radius: 10px; background: var(--blue); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+  .lock-card.warn-card .lock-num { background: #ff6f00; }
+  .lock-card.ok-card .lock-num { background: var(--green); }
+  .lock-content { flex: 1; min-width: 0; }
+  .lock-name { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lock-meta { display: flex; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
+
+  /* EMPTY */
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--text-light); }
+  .empty-state .icon { font-size: 52px; margin-bottom: 16px; }
+  .empty-state p { font-size: 15px; }
+
+  /* FAB */
+  .fab { position: fixed; bottom: calc(var(--nav-h) + 16px); right: 20px; background: var(--green); color: #fff; border: none; width: 54px; height: 54px; border-radius: 50%; font-size: 26px; box-shadow: 0 4px 16px rgba(46,125,50,0.4); cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 50; }
+  .fab.blue { background: var(--blue); box-shadow: 0 4px 16px rgba(21,101,192,0.4); }
+  .fab:active { transform: scale(0.93); }
+
+  /* SHEETS */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 200; display: none; align-items: flex-end; }
+  .overlay.open { display: flex; }
+  .sheet { background: var(--card); width: 100%; border-radius: 20px 20px 0 0; max-height: 92vh; overflow-y: auto; animation: slideUp 0.3s ease; }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .sheet-handle { width: 40px; height: 4px; background: #ddd; border-radius: 2px; margin: 12px auto 4px; }
+  .sheet-header { padding: 8px 16px 14px; display: flex; align-items: center; justify-content: space-between; }
+  .sheet-title { font-size: 18px; font-weight: 700; }
+  .btn-close { background: #f0f0f0; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+  /* DETAIL */
+  .detail-hero { padding: 18px 16px; margin: 0 16px 16px; border-radius: var(--radius); color: #fff; display: flex; align-items: center; gap: 14px; }
+  .detail-hero.green  { background: linear-gradient(135deg, var(--green-dark), var(--green-light)); }
+  .detail-hero.grey   { background: linear-gradient(135deg, #616161, #9e9e9e); }
+  .detail-hero.blue   { background: linear-gradient(135deg, #0d47a1, var(--blue-light)); }
+  .detail-hero.orange { background: linear-gradient(135deg, #e65100, #ff9800); }
+  .detail-avatar { width: 52px; height: 52px; border-radius: 50%; background: rgba(255,255,255,0.25); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; flex-shrink: 0; }
+  .detail-name { font-size: 19px; font-weight: 700; }
+  .detail-type { font-size: 13px; opacity: 0.85; margin-top: 3px; }
+  .detail-rows { padding: 0 16px; }
+  .detail-row { display: flex; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-icon { width: 34px; font-size: 17px; flex-shrink: 0; padding-top: 1px; }
+  .detail-label { font-size: 11px; color: var(--text-light); margin-bottom: 2px; }
+  .detail-value { font-size: 15px; font-weight: 500; }
+  .detail-value a { color: var(--green-dark); text-decoration: none; }
+  .holder-list { padding: 0 16px 8px; }
+  .holder-list-title { font-size: 12px; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; padding: 12px 0 8px; }
+  .holder-item { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .holder-item:last-child { border-bottom: none; }
+  .holder-item:active { opacity: 0.7; }
+  .holder-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+  .holder-dot.ret { background: #bdbdbd; }
+  .holder-name { font-size: 14px; font-weight: 500; flex: 1; }
+  .holder-nr { font-size: 12px; color: var(--text-light); }
+  .action-row { display: flex; gap: 10px; padding: 14px 16px 20px; }
+  .btn-action { flex: 1; padding: 13px; border-radius: 10px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn-action:active { opacity: 0.8; }
+  .btn-edit { background: var(--green); color: #fff; }
+  .btn-edit-blue { background: var(--blue); color: #fff; }
+  .btn-delete { background: #ffebee; color: var(--danger); }
+
+  /* FORMS */
+  .form-body { padding: 0 16px 24px; }
+  .form-group { margin-bottom: 14px; }
+  .form-label { font-size: 13px; color: var(--text-light); font-weight: 600; margin-bottom: 5px; display: block; }
+  .form-input { width: 100%; padding: 11px 14px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 15px; background: var(--card); outline: none; transition: border-color 0.2s; color: var(--text); }
+  .form-input:focus { border-color: var(--green); }
+  .form-input.blue:focus { border-color: var(--blue); }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .btn-save { width: 100%; padding: 14px; color: #fff; border: none; border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 6px; }
+  .btn-save.green { background: var(--green); }
+  .btn-save.blue  { background: var(--blue); }
+  .btn-save:disabled { opacity: 0.6; }
+
+  /* STATS */
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+  .stats-tile { border-radius: 12px; padding: 14px; text-align: center; }
+  .stats-tile .big { font-size: 26px; font-weight: 700; }
+  .stats-tile .lbl { font-size: 11px; color: var(--text-light); margin-top: 3px; }
+
+  /* TOAST */
+  .toast { position: fixed; bottom: calc(var(--nav-h) + 12px); left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 11px 22px; border-radius: 24px; font-size: 14px; font-weight: 500; z-index: 300; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; }
+  .toast.show { opacity: 1; }
+
+  /* CONFIRM */
+  .confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 400; display: none; align-items: center; justify-content: center; padding: 24px; }
+  .confirm-overlay.open { display: flex; }
+  .confirm-box { background: var(--card); border-radius: 16px; padding: 24px; width: 100%; max-width: 320px; text-align: center; }
+  .confirm-title { font-size: 17px; font-weight: 700; margin-bottom: 10px; }
+  .confirm-text  { font-size: 14px; color: var(--text-light); margin-bottom: 20px; }
+  .confirm-btns  { display: flex; gap: 10px; }
+  .confirm-btns button { flex: 1; padding: 12px; border-radius: 10px; border: none; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .btn-cancel-confirm { background: var(--bg); color: var(--text); }
+  .btn-ok-confirm { background: var(--danger); color: #fff; }
+  .btn-ok-confirm:disabled { opacity: 0.5; }
+
+  /* FIREBASE SPINNER */
+  #fsSpinner { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 500; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+  #fsSpinner.hidden { display: none; }
+  .spinner-ring { width: 48px; height: 48px; border: 5px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #fsSpinner p { color: #fff; font-size: 15px; font-weight: 600; }
+
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- SPLASH -->
+<div id="splash">
+  <div class="splash-logo">🎾</div>
+  <div class="splash-title">Schlüsselapp</div>
+  <div class="splash-sub">TC Schlüsselverwaltung</div>
+  <button id="btnStart" onclick="startApp()">▶ &nbsp;Starten</button>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <header id="mainHeader" class="tab-keys">
+    <div class="header-top">
+      <div class="header-left">
+        <div>
+          <div class="header-title" id="headerTitle">🔑 Schlüsselinhaber</div>
+          <div class="header-sub" id="headerSub"></div>
+        </div>
+      </div>
+      <div class="header-right">
+        <span id="syncStatus">● …</span>
+        <button class="btn-icon" onclick="showStats()">📊</button>
+      </div>
+    </div>
+    <div class="search-bar">
+      <span class="search-icon">🔍</span>
+      <input type="search" id="searchInput" placeholder="Suchen …" oninput="onSearch()">
+      <button class="search-clear" onclick="clearSearch()" id="searchClearBtn" style="display:none">✕</button>
+    </div>
+  </header>
+
+  <!-- VIEW: SCHLÜSSEL -->
+  <div class="view active" id="viewKeys">
+    <div class="filter-wrap"><div class="filter-tabs" id="filterTabsKeys"></div></div>
+    <div class="stats-bar" id="statsBarKeys"></div>
+    <div class="list-container" id="listKeys"></div>
+  </div>
+
+  <!-- VIEW: SCHLÖSSER -->
+  <div class="view" id="viewLocks">
+    <div class="filter-wrap"><div class="filter-tabs" id="filterTabsLocks"></div></div>
+    <div class="stats-bar" id="statsBarLocks"></div>
+    <div class="list-container" id="listLocks"></div>
+  </div>
+
+  <nav class="bottom-nav">
+    <button class="nav-btn active-keys" id="navKeys" onclick="switchTab('keys')">
+      <span class="nav-icon">🔑</span><span class="nav-label">Inhaber</span>
+    </button>
+    <button class="nav-btn" id="navLocks" onclick="switchTab('locks')">
+      <span class="nav-icon">🚪</span><span class="nav-label">Schlösser</span>
+    </button>
+  </nav>
+  <button class="fab" id="fabBtn" onclick="fabAction()">＋</button>
+</div>
+
+<!-- Detail: Schlüssel -->
+<div class="overlay" id="detailOverlay" onclick="closeOverlay('detailOverlay')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header"><div class="sheet-title">Details</div><button class="btn-close" onclick="closeOverlay('detailOverlay')">✕</button></div>
+    <div id="detailContent"></div>
+  </div>
+</div>
+
+<!-- Detail: Schloss -->
+<div class="overlay" id="lockDetailOverlay" onclick="closeOverlay('lockDetailOverlay')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header"><div class="sheet-title">Schloss Details</div><button class="btn-close" onclick="closeOverlay('lockDetailOverlay')">✕</button></div>
+    <div id="lockDetailContent"></div>
+  </div>
+</div>
+
+<!-- Form: Schlüssel -->
+<div class="overlay" id="formOverlay" onclick="closeOverlay('formOverlay')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header"><div class="sheet-title" id="formTitle">Neuer Eintrag</div><button class="btn-close" onclick="closeOverlay('formOverlay')">✕</button></div>
+    <div class="form-body">
+      <input type="hidden" id="fId">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Nachname</label><input class="form-input" id="fNachname" placeholder="Mustermann"></div>
+        <div class="form-group"><label class="form-label">Vorname</label><input class="form-input" id="fVorname" placeholder="Max"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Schlüsselart</label><input class="form-input" id="fArt" list="artList" placeholder="z.B. HS, Schrank Umkleide …"><datalist id="artList"></datalist></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Schlüssel-Nr.</label><input class="form-input" id="fNummer" placeholder="z.B. 114.034"></div>
+        <div class="form-group"><label class="form-label">Pfand (€)</label><input class="form-input" id="fPfand" type="number" placeholder="0"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Datum Ausgabe</label><input class="form-input" id="fDatum" type="date"></div>
+        <div class="form-group"><label class="form-label">Telefon</label><input class="form-input" id="fTelefon" type="tel" placeholder="0511 …"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Bemerkung</label><input class="form-input" id="fBemerkung" placeholder="Optional"></div>
+      <button class="btn-save green" id="keySaveBtn" onclick="saveEntry()">💾 &nbsp;Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Form: Schloss -->
+<div class="overlay" id="lockFormOverlay" onclick="closeOverlay('lockFormOverlay')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header"><div class="sheet-title" id="lockFormTitle">Neues Schloss</div><button class="btn-close" onclick="closeOverlay('lockFormOverlay')">✕</button></div>
+    <div class="form-body">
+      <input type="hidden" id="lfId">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Nr.</label><input class="form-input blue" id="lfNr" type="number" placeholder="1"></div>
+        <div class="form-group"><label class="form-label">Anzahl Schlüssel</label><input class="form-input blue" id="lfAnzahl" type="number" placeholder="0"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Tür / Schloss</label><input class="form-input blue" id="lfName" placeholder="z.B. Geschäftszimmer"></div>
+      <div class="form-group"><label class="form-label">Bemerkung</label><input class="form-input blue" id="lfBemerkung" placeholder="Optional"></div>
+      <button class="btn-save blue" id="lockSaveBtn" onclick="saveLock()">💾 &nbsp;Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="overlay" id="statsOverlay" onclick="closeOverlay('statsOverlay')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header"><div class="sheet-title">📊 Gesamtübersicht</div><button class="btn-close" onclick="closeOverlay('statsOverlay')">✕</button></div>
+    <div id="statsContent" style="padding:0 16px 28px;"></div>
+  </div>
+</div>
+
+<!-- Confirm -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-box">
+    <div class="confirm-title">Löschen?</div>
+    <div class="confirm-text" id="confirmText"></div>
+    <div class="confirm-btns">
+      <button class="btn-cancel-confirm" onclick="closeConfirm()">Abbrechen</button>
+      <button class="btn-ok-confirm" id="confirmOkBtn" onclick="confirmDelete()">Löschen</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Firebase Spinner -->
+<div id="fsSpinner" class="hidden">
+  <div class="spinner-ring"></div>
+  <p id="fsSpinnerText">Verbinde mit Datenbank …</p>
+</div>
+
+<script>
+// =====================================================
+// FIREBASE KONFIGURATION
+// ▼▼▼ Hier die Werte aus der Firebase-Konsole eintragen ▼▼▼
+// =====================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyDfP2xCpV5d2qCefkMFgxmYJK8pCALY2N0",
+  authDomain: "schluesselapp-15d55.firebaseapp.com",
+  projectId: "schluesselapp-15d55",
+  storageBucket: "schluesselapp-15d55.firebasestorage.app",
+  messagingSenderId: "170328595810",
+  appId: "1:170328595810:web:fd32f77f2505b63629603b",
+  measurementId: "G-JJDCKXG16Z"
+};
+// =====================================================
+
+// ==================== CSV SEED DATA ====================
+const CSV_KEYS = [
+  {nachname:"Schaube",        vorname:"Anna-Frederike",   art:"43407",                    nummer:"2.137",   datum:"",           pfand:"",   telefon:"5351 40567",  bemerkung:""},
+  {nachname:"Pächter",        vorname:"No Name",          art:"Abstellraum",              nummer:"0",       datum:"01.10.2009", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Pächter",        vorname:"No Name",          art:"Briefkasten",              nummer:"0",       datum:"01.10.2009", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Pächter",        vorname:"No Name",          art:"Hallenbeleuchtung",        nummer:"0",       datum:"01.10.2009", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Pächter",        vorname:"No Name",          art:"HS",                       nummer:"0",       datum:"01.10.2009", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Schinnerling",   vorname:"Peter",            art:"HS",                       nummer:"0",       datum:"16.04.2008", pfand:"0",  telefon:"6771",        bemerkung:""},
+  {nachname:"Hauf",           vorname:"Christian",        art:"HS",                       nummer:"314.034", datum:"17.04.2021", pfand:"0",  telefon:"2095",        bemerkung:""},
+  {nachname:"Geschäftszimmer",vorname:"Schlüsselschrank", art:"HS",                       nummer:"",        datum:"",           pfand:"",   telefon:"",            bemerkung:""},
+  {nachname:"Stolle",         vorname:"Caro",             art:"HS",                       nummer:"114.034", datum:"01.05.2008", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Schinnerling",   vorname:"Peter",            art:"HS",                       nummer:"311.434", datum:"01.01.2000", pfand:"0",  telefon:"6771",        bemerkung:""},
+  {nachname:"Drick",          vorname:"Alexandra",        art:"HS abgegeben 17.01.2018",  nummer:"114.034", datum:"01.05.2008", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Glöckler",       vorname:"Hartmut",          art:"HS abgegeben 08.01.2020",  nummer:"114.034", datum:"01.01.2000", pfand:"0",  telefon:"33121",       bemerkung:""},
+  {nachname:"Hempel",         vorname:"Lutz",             art:"HS",                       nummer:"192",     datum:"",           pfand:"",   telefon:"41739",       bemerkung:"von Alex Drick übernommen"},
+  {nachname:"Gerloff",        vorname:"Lina",             art:"Krüger",                   nummer:"2.172",   datum:"",           pfand:"",   telefon:"",            bemerkung:"Olesya"},
+  {nachname:"Pächter",        vorname:"No Name",          art:"Müllcontainer",            nummer:"0",       datum:"01.10.2009", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Pächter",        vorname:"No Name",          art:"Nebenschlüssel",           nummer:"0",       datum:"01.10.2009", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Tauber",         vorname:"Heinz",            art:"neu Karte",                nummer:"2.033",   datum:"",           pfand:"",   telefon:"03076 78332", bemerkung:""},
+  {nachname:"Gatke",          vorname:"Guido",            art:"Schließung 2",             nummer:"",        datum:"",           pfand:"",   telefon:"",            bemerkung:""},
+  {nachname:"Speer",          vorname:"Hannes",           art:"Schließung 2",             nummer:"46",      datum:"18.04.2005", pfand:"0",  telefon:"37437",       bemerkung:""},
+  {nachname:"Brumund",        vorname:"Wolfgang",         art:"Schließung 3",             nummer:"",        datum:"",           pfand:"",   telefon:"",            bemerkung:""},
+  {nachname:"Lüders",         vorname:"Karen",            art:"Schließung 4",             nummer:"45",      datum:"28.08.2005", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Geschäftszimmer",vorname:"Schlüsselschrank", art:"Schließung 4",             nummer:"",        datum:"",           pfand:"",   telefon:"",            bemerkung:""},
+  {nachname:"Geschäftszimmer",vorname:"Schlüsselschrank", art:"Schließung 4",             nummer:"",        datum:"",           pfand:"",   telefon:"",            bemerkung:""},
+  {nachname:"Dierks",         vorname:"Uwe",              art:"Schließung 4",             nummer:"114.034", datum:"01.05.2008", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Fabiunke",       vorname:"Erika",            art:"Schließung 4",             nummer:"114.034", datum:"01.05.2008", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Munter-Hoff",    vorname:"Giesela",          art:"Schrank Umkleide Damen",   nummer:"135",     datum:"02.07.2013", pfand:"20", telefon:"4908",        bemerkung:""},
+  {nachname:"Zierlein",       vorname:"Ulla",             art:"Schrank Umkleide Damen",   nummer:"144",     datum:"14.02.2002", pfand:"20", telefon:"58770",       bemerkung:"Rückgabe 1.8.2024"},
+  {nachname:"Kwiatkowski",    vorname:"Sabine",           art:"Schrank Umkleide Damen",   nummer:"202",     datum:"01.10.2010", pfand:"20", telefon:"595999",      bemerkung:""},
+  {nachname:"Kniep",          vorname:"Gitti",            art:"Schrank Umkleide Damen",   nummer:"260",     datum:"16.01.2008", pfand:"20", telefon:"",            bemerkung:""},
+  {nachname:"Geika",          vorname:"K.",               art:"Schrank Umkleide Damen",   nummer:"782",     datum:"01.05.2013", pfand:"20", telefon:"",            bemerkung:""},
+  {nachname:"Wiese",          vorname:"Ute",              art:"Schrank Umkleide Damen",   nummer:"965",     datum:"01.10.2010", pfand:"20", telefon:"",            bemerkung:""},
+  {nachname:"Pilasch",        vorname:"Hans",             art:"Schrank Umkleide Damen",   nummer:"1.015",   datum:"01.11.2006", pfand:"20", telefon:"",            bemerkung:""},
+  {nachname:"Fabiunke",       vorname:"Erika",            art:"Schrank Umkleide Damen",   nummer:"66.759",  datum:"20.12.2012", pfand:"20", telefon:"",            bemerkung:"Rückgabe 01.01.2025"},
+  {nachname:"Dierks",         vorname:"Uwe",              art:"Schrank Umkleide Herren",  nummer:"12",      datum:"31.12.1999", pfand:"20", telefon:"4956",        bemerkung:""},
+  {nachname:"Fabiunke",       vorname:"Manfred",          art:"Schrank Umkleide Herren",  nummer:"13",      datum:"31.12.1999", pfand:"20", telefon:"",            bemerkung:""},
+  {nachname:"Pilasch",        vorname:"Hans",             art:"Schrank Umkleide Herren",  nummer:"14",      datum:"31.12.1999", pfand:"20", telefon:"",            bemerkung:""},
+  {nachname:"Maeder",         vorname:"Klaus",            art:"Schrank Umkleide Herren",  nummer:"16",      datum:"31.12.1999", pfand:"20", telefon:"",            bemerkung:""},
+  {nachname:"Blumenthal",     vorname:"Uli",              art:"Schrank Umkleide Herren",  nummer:"17",      datum:"31.12.1999", pfand:"20", telefon:"",            bemerkung:""},
+  {nachname:"Glöckler",       vorname:"Hartmut",          art:"Schrank Umkleide Herren",  nummer:"26",      datum:"31.12.1999", pfand:"20", telefon:"33121",       bemerkung:""},
+  {nachname:"Baumgart",       vorname:"Uwe",              art:"Schrank Umkleide Herren",  nummer:"70",      datum:"07.03.2002", pfand:"20", telefon:"599971",      bemerkung:""},
+  {nachname:"Prössel",        vorname:"Jürgen",           art:"Schrank Umkleide Herren",  nummer:"88",      datum:"11.05.2011", pfand:"",   telefon:"",            bemerkung:"Abgegeben"},
+  {nachname:"Zierlein",       vorname:"W.",               art:"Schrank Umkleide Herren",  nummer:"130",     datum:"23.05.2002", pfand:"20", telefon:"58770",       bemerkung:""},
+  {nachname:"Brumund",        vorname:"Wolfgang",         art:"Schrank Umkleide Herren",  nummer:"244",     datum:"",           pfand:"5",  telefon:"595999",      bemerkung:""},
+  {nachname:"Kunow",          vorname:"J.",               art:"Schrank Umkleide Herren",  nummer:"345",     datum:"18.06.2002", pfand:"20", telefon:"",            bemerkung:""},
+  {nachname:"Klibor",         vorname:"A.",               art:"Schrank Umkleide Herren",  nummer:"424",     datum:"25.04.2002", pfand:"20", telefon:"",            bemerkung:""},
+  {nachname:"Henrichs",       vorname:"Klaus",            art:"Schrank Umkleide Herren",  nummer:"427",     datum:"31.07.2006", pfand:"20", telefon:"5352937921",  bemerkung:""},
+  {nachname:"Kniep",          vorname:"Achim",            art:"Schrank Umkleide Herren",  nummer:"625",     datum:"01.10.2010", pfand:"20", telefon:"",            bemerkung:""},
+  {nachname:"Pilasch",        vorname:"Hans",             art:"Schrank Umkleide Herren",  nummer:"626",     datum:"01.11.2006", pfand:"20", telefon:"",            bemerkung:""},
+  {nachname:"Montagsrunde",   vorname:"",                 art:"Schrank Umkleide Herren",  nummer:"",        datum:"14.10.2002", pfand:"20", telefon:"",            bemerkung:""},
+  {nachname:"Herzlieb",       vorname:"R.",               art:"Schrank Umkleide Herren",  nummer:"1.048",   datum:"16.08.2007", pfand:"20", telefon:"",            bemerkung:""},
+  {nachname:"Pächter",        vorname:"No Name",          art:"Speisekammer",             nummer:"0",       datum:"01.10.2009", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Conradt",        vorname:"Nadine",           art:"Tennisshop",               nummer:"",        datum:"",           pfand:"",   telefon:"",            bemerkung:""},
+  {nachname:"Hoberg",         vorname:"Mathias",          art:"Tennisshop",               nummer:"",        datum:"",           pfand:"",   telefon:"",            bemerkung:""},
+  {nachname:"Schinnerling",   vorname:"Peter",            art:"Geschäftszimmer",          nummer:"",        datum:"19.09.2022", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Brumund",        vorname:"Wolfgang",         art:"Geschäftszimmer",          nummer:"",        datum:"19.09.2022", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Tracums",        vorname:"Wilnis",           art:"Geschäftszimmer",          nummer:"",        datum:"10.01.2023", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Nabers",         vorname:"Christina",        art:"Geschäftszimmer",          nummer:"",        datum:"19.09.2022", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Hauf",           vorname:"Christian",        art:"Geschäftszimmer",          nummer:"",        datum:"20.09.2022", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Fabiunke",       vorname:"Manfred",          art:"Geschäftszimmer",          nummer:"",        datum:"26.09.2022", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Dierks",         vorname:"Uwe",              art:"Geschäftszimmer",          nummer:"",        datum:"19.09.2022", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Mesel",          vorname:"Stephan",          art:"Geschäftszimmer",          nummer:"",        datum:"11.10.2022", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Dibowski",       vorname:"Frank",            art:"Geschäftszimmer",          nummer:"",        datum:"16.11.2022", pfand:"0",  telefon:"",            bemerkung:""},
+  {nachname:"Segebarth",      vorname:"Carolin",          art:"Geschäftszimmer",          nummer:"",        datum:"11.04.2023", pfand:"0",  telefon:"",            bemerkung:""},
+];
+
+const CSV_LOCKS = [
+  {nr:1,  name:"Hauptschlüssel",               anzahl:null, bemerkung:"",                                    sort:1},
+  {nr:2,  name:"Geschäftszimmer",              anzahl:10,   bemerkung:"",                                    sort:2},
+  {nr:3,  name:"Außentür Eingang Parkplatz",   anzahl:7,    bemerkung:"",                                    sort:3},
+  {nr:4,  name:"Gaststätte",                   anzahl:1,    bemerkung:"",                                    sort:4},
+  {nr:5,  name:"Heizungsraum Schließanlage 3", anzahl:1,    bemerkung:"",                                    sort:5},
+  {nr:6,  name:"Putzraum",                     anzahl:5,    bemerkung:"",                                    sort:6},
+  {nr:7,  name:"Vorratsraum",                  anzahl:null, bemerkung:"fehlt",                               sort:7},
+  {nr:8,  name:"Damenumkleideraum",            anzahl:1,    bemerkung:"Diverse Separat",                     sort:8},
+  {nr:9,  name:"Fluchttür Mitte links",        anzahl:1,    bemerkung:"Identisch mit 10",                    sort:9},
+  {nr:10, name:"Fluchttür hinten rechts",      anzahl:1,    bemerkung:"Identisch mit 9",                     sort:10},
+  {nr:11, name:"Außentür Geschäftszimmer",     anzahl:null, bemerkung:"Hauptschlüssel",                      sort:11},
+  {nr:12, name:"Tor Weg Eingang",              anzahl:null, bemerkung:"",                                    sort:12},
+  {nr:13, name:"Halle Lichtsteuerung",         anzahl:2,    bemerkung:"",                                    sort:13},
+  {nr:14, name:"Keller Aktenraum",             anzahl:2,    bemerkung:"",                                    sort:14},
+  {nr:15, name:"Lichtschlüssel",               anzahl:4,    bemerkung:"",                                    sort:15},
+  {nr:16, name:"Kühltheke",                    anzahl:2,    bemerkung:"",                                    sort:16},
+  {nr:17, name:"Trainerraum",                  anzahl:3,    bemerkung:"",                                    sort:17},
+  {nr:18, name:"Wartung Lüftung",              anzahl:1,    bemerkung:"",                                    sort:18},
+  {nr:19, name:"Schaltschrank Hebepumpe Außen",anzahl:2,    bemerkung:"",                                    sort:19},
+  {nr:20, name:"Schaltschrank Beregnung",      anzahl:1,    bemerkung:"",                                    sort:20},
+  {nr:21, name:"Garage 1",                     anzahl:2,    bemerkung:"",                                    sort:21},
+  {nr:22, name:"Garage 2",                     anzahl:2,    bemerkung:"",                                    sort:22},
+  {nr:23, name:"Garage 3",                     anzahl:2,    bemerkung:"",                                    sort:23},
+  {nr:24, name:"Blockhaus",                    anzahl:3,    bemerkung:"",                                    sort:24},
+  {nr:25, name:"Lichtkasten Straße",           anzahl:null, bemerkung:"",                                    sort:25},
+  {nr:26, name:"Lichtkasten Eingang",          anzahl:1,    bemerkung:"",                                    sort:26},
+  {nr:27, name:"Brandmeldeanlage",             anzahl:3,    bemerkung:"",                                    sort:27},
+  {nr:28, name:"Alarmanlage",                  anzahl:3,    bemerkung:"",                                    sort:28},
+  {nr:29, name:"Zugangskontrolle",             anzahl:6,    bemerkung:"für Außengeräte und Steuereinheit GZ",sort:29},
+  {nr:30, name:"Glasvitrine",                  anzahl:1,    bemerkung:"",                                    sort:30},
+  {nr:31, name:"Müllbehälter",                 anzahl:2,    bemerkung:"",                                    sort:31},
+  {nr:32, name:"Meckerkasten",                 anzahl:2,    bemerkung:"",                                    sort:32},
+  {nr:34, name:"Pfosten Einfahrt",             anzahl:1,    bemerkung:"",                                    sort:34},
+  {nr:35, name:"Werkzeugschrank Heizraum",     anzahl:2,    bemerkung:"",                                    sort:35},
+  {nr:36, name:"Rollcontainer rechts",         anzahl:6,    bemerkung:"2",                                   sort:36},
+  {nr:37, name:"Schiebetürenschränke GZ",      anzahl:3,    bemerkung:"",                                    sort:37},
+  {nr:99, name:"99",                           anzahl:1,    bemerkung:"",                                    sort:99},
+];
+
+// ==================== STATE ====================
+let keys  = [];
+let locks = [];
+let activeTab        = 'keys';
+let activeKeyFilter  = 'Alle';
+let activeLockFilter = 'Alle';
+let deleteTarget     = null;
+let deleteType       = 'key';
+let keysLoaded  = false;
+let locksLoaded = false;
+let dbReady     = false;
+let db;
+
+// ==================== FIREBASE LAYER ====================
+function showSpinner(msg) {
+  document.getElementById('fsSpinnerText').textContent = msg || 'Verbinde …';
+  document.getElementById('fsSpinner').classList.remove('hidden');
+}
+function hideSpinner() {
+  document.getElementById('fsSpinner').classList.add('hidden');
+}
+function setSyncStatus(state) {
+  const el = document.getElementById('syncStatus');
+  if (state === 'online')  { el.textContent = '● Online';  el.className = 'online'; }
+  if (state === 'offline') { el.textContent = '● Offline'; el.className = 'offline'; }
+  if (state === 'sync')    { el.textContent = '● Sync …';  el.className = ''; }
+}
+
+async function seedIfEmpty() {
+  showSpinner('Daten werden einmalig geladen …');
+  const batch = db.batch();
+  CSV_KEYS.forEach(row  => batch.set(db.collection('schluessel').doc(), row));
+  CSV_LOCKS.forEach(row => batch.set(db.collection('schloesser').doc(), row));
+  await batch.commit();
+  // onSnapshot fires automatically after commit
+}
+
+function initFirestore() {
+  try {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+  } catch(e) {
+    showSpinner('❌ Firebase-Konfiguration fehlt! Bitte Config eintragen.');
+    return;
+  }
+
+  window.addEventListener('online',  () => { db.enableNetwork();  setSyncStatus('online');  });
+  window.addEventListener('offline', () => { db.disableNetwork(); setSyncStatus('offline'); });
+
+  db.collection('schluessel').onSnapshot(snap => {
+    keys = snap.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+    keysLoaded = true;
+    onBothLoaded();
+  }, () => setSyncStatus('offline'));
+
+  db.collection('schloesser').onSnapshot(snap => {
+    locks = snap.docs.map(doc => ({ docId: doc.id, ...doc.data() }));
+    locksLoaded = true;
+    onBothLoaded();
+  }, () => setSyncStatus('offline'));
+}
+
+function onBothLoaded() {
+  if (!keysLoaded || !locksLoaded) return;
+  if (!dbReady) {
+    if (keys.length === 0 && locks.length === 0) {
+      seedIfEmpty();
+      return;
+    }
+    dbReady = true;
+    hideSpinner();
+    setSyncStatus('online');
+    switchTab('keys');
+  } else {
+    hideSpinner();
+    setSyncStatus('online');
+    if (activeTab === 'keys') { renderKeyFilters(); renderKeys(); }
+    else                      { renderLockFilters(); renderLocks(); }
+  }
+}
+
+// ==================== HELPERS ====================
+function normalizeArt(art) {
+  if (!art) return '';
+  const a = art.toLowerCase();
+  if (a.includes('hs') || a.includes('hauptschlüssel')) return 'HS';
+  if (a.includes('umkleide damen'))  return 'Schrank Damen';
+  if (a.includes('umkleide herren')) return 'Schrank Herren';
+  if (a.includes('geschäftszimmer')) return 'Geschäftszimmer';
+  if (a.includes('schließung'))      return art.replace(/\s+/g,' ').trim();
+  return art.replace(/\s+/g,' ').trim();
+}
+
+function isReturned(e) {
+  const t = ((e.art||'') + ' ' + (e.bemerkung||'')).toLowerCase();
+  return t.includes('abgegeben') || t.includes('rückgabe');
+}
+
+function getInitials(e) {
+  const n = (e.nachname||'').trim(), v = (e.vorname||'').trim();
+  if (n && v) return (n[0]+v[0]).toUpperCase();
+  if (n) return n.substring(0,2).toUpperCase();
+  return '?';
+}
+
+function artIcon(art) {
+  const a = (art||'').toLowerCase();
+  if (a.includes('hs') || a.includes('hauptschlüssel')) return '🔑';
+  if (a.includes('damen'))      return '👒';
+  if (a.includes('herren'))     return '👔';
+  if (a.includes('geschäfts'))  return '🏢';
+  if (a.includes('shop'))       return '🛒';
+  if (a.includes('müll'))       return '🗑️';
+  if (a.includes('speise'))     return '🍽️';
+  if (a.includes('abstell'))    return '📦';
+  if (a.includes('briefkasten'))return '📬';
+  if (a.includes('hallen') || a.includes('licht')) return '💡';
+  if (a.includes('schließung')) return '🔐';
+  if (a.includes('karte'))      return '💳';
+  return '🗝️';
+}
+
+function lockIcon(name) {
+  const n = (name||'').toLowerCase();
+  if (n.includes('hauptschlüssel'))  return '🔑';
+  if (n.includes('gaststätte') || n.includes('kühl')) return '🍺';
+  if (n.includes('garage'))          return '🚗';
+  if (n.includes('licht'))           return '💡';
+  if (n.includes('alarm') || n.includes('brand')) return '🚨';
+  if (n.includes('heizung') || n.includes('schaltschrank') || n.includes('lüftung')) return '⚙️';
+  if (n.includes('damen') || n.includes('herren') || n.includes('umkleide')) return '🚿';
+  if (n.includes('vitrine'))         return '🖼️';
+  if (n.includes('müll'))            return '🗑️';
+  if (n.includes('trainer'))         return '🎾';
+  if (n.includes('blockhaus'))       return '🏠';
+  if (n.includes('tor') || n.includes('außentür') || n.includes('pfosten') || n.includes('eingang') || n.includes('einfahrt')) return '🚪';
+  if (n.includes('keller') || n.includes('akten')) return '📁';
+  if (n.includes('schrank') || n.includes('container')) return '🗄️';
+  if (n.includes('zugang'))          return '🔒';
+  if (n.includes('meckerkasten'))    return '📢';
+  if (n.includes('beregnung'))       return '💧';
+  return '🔐';
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+function closeOverlay(id) { document.getElementById(id).classList.remove('open'); }
+function isoDate(str) {
+  if (!str) return '';
+  const p = str.split('.');
+  return p.length === 3 ? `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}` : '';
+}
+function germanDate(iso) {
+  if (!iso) return '';
+  const p = iso.split('-');
+  return p.length === 3 ? `${p[2]}.${p[1]}.${p[0]}` : iso;
+}
+
+// ==================== TAB / NAV ====================
+function switchTab(tab) {
+  activeTab = tab;
+  document.getElementById('viewKeys').classList.toggle('active', tab==='keys');
+  document.getElementById('viewLocks').classList.toggle('active', tab==='locks');
+  document.getElementById('navKeys').className  = 'nav-btn' + (tab==='keys'  ? ' active-keys'  : '');
+  document.getElementById('navLocks').className = 'nav-btn' + (tab==='locks' ? ' active-locks' : '');
+  const fab = document.getElementById('fabBtn');
+  const hdr = document.getElementById('mainHeader');
+  if (tab === 'keys') {
+    hdr.className = 'tab-keys';
+    document.getElementById('headerTitle').textContent = '🔑 Schlüsselinhaber';
+    fab.className = 'fab';
+    document.getElementById('searchInput').placeholder = 'Name, Schlüsselart, Nummer …';
+  } else {
+    hdr.className = 'tab-locks';
+    document.getElementById('headerTitle').textContent = '🚪 Schlösser & Türen';
+    fab.className = 'fab blue';
+    document.getElementById('searchInput').placeholder = 'Schloss, Tür, Nr. …';
+  }
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchClearBtn').style.display = 'none';
+  if (tab === 'keys') { renderKeyFilters(); renderKeys(); }
+  else                { renderLockFilters(); renderLocks(); }
+}
+
+function fabAction() {
+  if (activeTab === 'keys') openForm(null); else openLockForm(null);
+}
+function onSearch() {
+  document.getElementById('searchClearBtn').style.display =
+    document.getElementById('searchInput').value ? 'block' : 'none';
+  if (activeTab === 'keys') renderKeys(); else renderLocks();
+}
+function clearSearch() {
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchClearBtn').style.display = 'none';
+  if (activeTab === 'keys') renderKeys(); else renderLocks();
+}
+
+// ==================== KEYS RENDER ====================
+function getKeyCategories() {
+  const arts = [...new Set(keys.map(d => normalizeArt(d.art)).filter(Boolean))].sort();
+  return ['Alle', ...arts];
+}
+function renderKeyFilters() {
+  document.getElementById('filterTabsKeys').innerHTML = getKeyCategories().map(c =>
+    `<button class="filter-tab${c===activeKeyFilter?' active-k':''}" onclick="setKeyFilter('${c.replace(/'/g,"\\'")}')">
+      ${c==='Alle'?'🔑 Alle':c}</button>`).join('');
+  const dl = document.getElementById('artList');
+  dl.innerHTML = [...new Set(keys.map(d=>d.art).filter(Boolean))].sort().map(a=>`<option value="${a}">`).join('');
+}
+function setKeyFilter(cat) { activeKeyFilter = cat; renderKeyFilters(); renderKeys(); }
+
+function renderKeys() {
+  const q = document.getElementById('searchInput').value.toLowerCase().trim();
+  let filtered = keys.filter(d => {
+    if (activeKeyFilter !== 'Alle' && normalizeArt(d.art) !== activeKeyFilter) return false;
+    if (q) return [d.nachname,d.vorname,d.art,d.nummer,d.telefon,d.bemerkung].join(' ').toLowerCase().includes(q);
+    return true;
+  }).sort((a,b) => {
+    const ra = isReturned(a), rb = isReturned(b);
+    if (ra !== rb) return ra ? 1 : -1;
+    return (a.nachname||'').localeCompare(b.nachname||'','de');
+  });
+
+  const active = filtered.filter(d => !isReturned(d)).length;
+  const pfandSum = filtered.reduce((s,d) => s+(parseFloat(d.pfand)||0), 0);
+  document.getElementById('headerSub').textContent = `${filtered.length} Einträge`;
+  document.getElementById('statsBarKeys').innerHTML =
+    `<div class="stat-chip">Aktiv: <span class="g">${active}</span></div>` +
+    `<div class="stat-chip">Gesamt: <span class="g">${filtered.length}</span></div>` +
+    (pfandSum>0 ? `<div class="stat-chip">Pfand: <span class="o">${pfandSum}€</span></div>` : '');
+
+  const el = document.getElementById('listKeys');
+  if (!filtered.length) { el.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>Keine Einträge gefunden</p></div>`; return; }
+  el.innerHTML = filtered.map(d => {
+    const ret = isReturned(d);
+    const hasPfand = d.pfand && d.pfand !== '0' && d.pfand !== '';
+    const cls = 'key-card' + (ret?' returned':(hasPfand?' deposit':''));
+    const fullName = [d.nachname, d.vorname].filter(Boolean).join(', ');
+    const badges = [];
+    if (d.nummer && d.nummer!=='0') badges.push(`<span class="badge num">Nr. ${d.nummer}</span>`);
+    if (d.datum)    badges.push(`<span class="badge date">${d.datum}</span>`);
+    if (hasPfand)   badges.push(`<span class="badge pfand">Pfand ${d.pfand}€</span>`);
+    if (ret)        badges.push(`<span class="badge warn">↩ Abgegeben</span>`);
+    return `<div class="${cls}" onclick="openDetail('${d.docId}')">
+      <div class="card-inner">
+        <div class="card-avatar">${getInitials(d)}</div>
+        <div class="card-content">
+          <div class="card-name">${artIcon(d.art)} ${fullName||'—'}</div>
+          <div class="card-type">${(d.art||'').replace(/\s+/g,' ')}</div>
+          <div class="card-meta">${badges.join('')}</div>
+        </div>
+        <div class="card-arrow">›</div>
+      </div></div>`;
+  }).join('');
+}
+
+// ==================== LOCKS RENDER ====================
+function renderLockFilters() {
+  const cats = ['Alle','Mit Anzahl','Fehlt/Unbekannt'];
+  document.getElementById('filterTabsLocks').innerHTML = cats.map(c =>
+    `<button class="filter-tab${c===activeLockFilter?' active-l':''}" onclick="setLockFilter('${c.replace(/'/g,"\\'")}')">
+      ${c==='Alle'?'🚪 Alle':c}</button>`).join('');
+}
+function setLockFilter(cat) { activeLockFilter = cat; renderLockFilters(); renderLocks(); }
+
+function renderLocks() {
+  const q = document.getElementById('searchInput').value.toLowerCase().trim();
+  let filtered = locks.filter(l => {
+    if (activeLockFilter === 'Mit Anzahl'      && (l.anzahl===null||l.anzahl===undefined)) return false;
+    if (activeLockFilter === 'Fehlt/Unbekannt' && l.anzahl!==null && l.anzahl!==undefined && (l.bemerkung||'').toLowerCase()!=='fehlt') return false;
+    if (q) return [l.name, String(l.nr), l.bemerkung].join(' ').toLowerCase().includes(q);
+    return true;
+  }).sort((a,b) => (a.sort||999) - (b.sort||999));
+
+  const totalKeys = filtered.reduce((s,l) => s+(l.anzahl||0), 0);
+  const mitAnzahl = filtered.filter(l => l.anzahl!==null && l.anzahl!==undefined).length;
+  document.getElementById('headerSub').textContent = `${filtered.length} Schlösser`;
+  document.getElementById('statsBarLocks').innerHTML =
+    `<div class="stat-chip">Schlösser: <span class="b">${filtered.length}</span></div>` +
+    `<div class="stat-chip">Schlüssel ges.: <span class="b">${totalKeys}</span></div>` +
+    `<div class="stat-chip">Erfasst: <span class="b">${mitAnzahl}</span></div>`;
+
+  const el = document.getElementById('listLocks');
+  if (!filtered.length) { el.innerHTML = `<div class="empty-state"><div class="icon">🔍</div><p>Keine Schlösser gefunden</p></div>`; return; }
+  el.innerHTML = filtered.map(l => {
+    const missing = (l.bemerkung||'').toLowerCase()==='fehlt' || l.anzahl===null || l.anzahl===undefined;
+    const cls = 'lock-card ' + (missing ? 'warn-card' : 'ok-card');
+    const badges = [];
+    if (l.anzahl!==null && l.anzahl!==undefined) badges.push(`<span class="badge num">🔑 ${l.anzahl} Schlüssel</span>`);
+    else badges.push(`<span class="badge warn">⚠ Anzahl unbekannt</span>`);
+    if (l.bemerkung) badges.push(`<span class="badge info">${l.bemerkung}</span>`);
+    const holders = findHoldersForLock(l);
+    if (holders.length) badges.push(`<span class="badge date">👤 ${holders.length} Inhaber</span>`);
+    return `<div class="${cls}" onclick="openLockDetail('${l.docId}')">
+      <div class="lock-inner">
+        <div class="lock-num">${l.nr}</div>
+        <div class="lock-content">
+          <div class="lock-name">${lockIcon(l.name)} ${l.name}</div>
+          <div class="lock-meta">${badges.join('')}</div>
+        </div>
+        <div class="card-arrow">›</div>
+      </div></div>`;
+  }).join('');
+}
+
+function findHoldersForLock(lock) {
+  const n = (lock.name||'').toLowerCase();
+  return keys.filter(k => {
+    const a = (k.art||'').toLowerCase();
+    if (n.includes('geschäftszimmer') && a.includes('geschäftszimmer')) return true;
+    if ((n.includes('hauptschlüssel')) && (a==='hs'||a.startsWith('hs '))) return true;
+    if (n.includes('damenumkleide') && a.includes('damen')) return true;
+    if (n.includes('müll') && a.includes('müll')) return true;
+    return false;
+  });
+}
+
+// ==================== DETAIL: KEY ====================
+function openDetail(docId) {
+  const d = keys.find(x => x.docId === docId);
+  if (!d) return;
+  const ret = isReturned(d);
+  const fullName = [d.vorname, d.nachname].filter(Boolean).join(' ');
+  const artClean = (d.art||'').replace(/\s+/g,' ').trim();
+  const rows = [
+    d.art     ? `<div class="detail-row"><div class="detail-icon">${artIcon(d.art)}</div><div><div class="detail-label">Schlüsselart</div><div class="detail-value">${d.art}</div></div></div>` : '',
+    d.nummer  ? `<div class="detail-row"><div class="detail-icon">🔢</div><div><div class="detail-label">Schlüssel-Nr.</div><div class="detail-value">${d.nummer}</div></div></div>` : '',
+    d.datum   ? `<div class="detail-row"><div class="detail-icon">📅</div><div><div class="detail-label">Datum Ausgabe</div><div class="detail-value">${d.datum}</div></div></div>` : '',
+    (d.pfand && d.pfand!=='0') ? `<div class="detail-row"><div class="detail-icon">💶</div><div><div class="detail-label">Pfand</div><div class="detail-value">${d.pfand} €</div></div></div>` : '',
+    d.telefon ? `<div class="detail-row"><div class="detail-icon">📞</div><div><div class="detail-label">Telefon</div><div class="detail-value"><a href="tel:${d.telefon}">${d.telefon}</a></div></div></div>` : '',
+    d.bemerkung?`<div class="detail-row"><div class="detail-icon">📝</div><div><div class="detail-label">Bemerkung</div><div class="detail-value">${d.bemerkung}</div></div></div>` : '',
+  ].filter(Boolean).join('');
+
+  document.getElementById('detailContent').innerHTML = `
+    <div class="detail-hero ${ret?'grey':'green'}">
+      <div class="detail-avatar">${getInitials(d)}</div>
+      <div><div class="detail-name">${fullName||'—'}</div><div class="detail-type">${artClean}</div></div>
+    </div>
+    <div class="detail-rows">${rows||'<div class="detail-row"><div class="detail-icon">ℹ️</div><div><div class="detail-value" style="color:var(--text-light)">Keine weiteren Daten</div></div></div>'}</div>
+    <div class="action-row">
+      <button class="btn-action btn-edit"   onclick="editKeyFromDetail('${docId}')">✏️ Bearbeiten</button>
+      <button class="btn-action btn-delete" onclick="askDelete('${docId}','key')">🗑 Löschen</button>
+    </div>`;
+  document.getElementById('detailOverlay').classList.add('open');
+}
+function editKeyFromDetail(docId) { closeOverlay('detailOverlay'); setTimeout(()=>openForm(docId),200); }
+
+// ==================== DETAIL: LOCK ====================
+function openLockDetail(docId) {
+  const l = locks.find(x => x.docId === docId);
+  if (!l) return;
+  const missing = (l.bemerkung||'').toLowerCase()==='fehlt' || l.anzahl===null || l.anzahl===undefined;
+  const holders = findHoldersForLock(l);
+  const rows = [
+    `<div class="detail-row"><div class="detail-icon">🔢</div><div><div class="detail-label">Nummer</div><div class="detail-value">${l.nr}</div></div></div>`,
+    (l.anzahl!==null && l.anzahl!==undefined)
+      ? `<div class="detail-row"><div class="detail-icon">🔑</div><div><div class="detail-label">Anzahl Schlüssel</div><div class="detail-value">${l.anzahl}</div></div></div>`
+      : `<div class="detail-row"><div class="detail-icon">⚠️</div><div><div class="detail-label">Anzahl Schlüssel</div><div class="detail-value" style="color:var(--danger)">Unbekannt</div></div></div>`,
+    l.bemerkung ? `<div class="detail-row"><div class="detail-icon">📝</div><div><div class="detail-label">Bemerkung</div><div class="detail-value">${l.bemerkung}</div></div></div>` : '',
+  ].filter(Boolean).join('');
+
+  const holderHtml = holders.length ? `<div class="holder-list">
+    <div class="holder-list-title">👤 Schlüsselinhaber (${holders.length})</div>
+    ${holders.map(h => {
+      const ret = isReturned(h);
+      const name = [h.vorname, h.nachname].filter(Boolean).join(' ');
+      return `<div class="holder-item" onclick="closeOverlay('lockDetailOverlay');setTimeout(()=>openDetail('${h.docId}'),200)">
+        <div class="holder-dot${ret?' ret':''}"></div>
+        <div class="holder-name">${name||'—'}${ret?` <span style="color:#bbb;font-size:12px">(abgegeben)</span>`:''}</div>
+        ${h.nummer?`<div class="holder-nr">Nr. ${h.nummer}</div>`:''}
+      </div>`;
+    }).join('')}
+  </div>` : '';
+
+  document.getElementById('lockDetailContent').innerHTML = `
+    <div class="detail-hero ${missing?'orange':'blue'}">
+      <div class="detail-avatar" style="font-size:26px">${lockIcon(l.name)}</div>
+      <div><div class="detail-name">${l.name}</div><div class="detail-type">Schloss Nr. ${l.nr}</div></div>
+    </div>
+    <div class="detail-rows">${rows}</div>
+    ${holderHtml}
+    <div class="action-row">
+      <button class="btn-action btn-edit-blue" onclick="editLockFromDetail('${docId}')">✏️ Bearbeiten</button>
+      <button class="btn-action btn-delete"    onclick="askDelete('${docId}','lock')">🗑 Löschen</button>
+    </div>`;
+  document.getElementById('lockDetailOverlay').classList.add('open');
+}
+function editLockFromDetail(docId) { closeOverlay('lockDetailOverlay'); setTimeout(()=>openLockForm(docId),200); }
+
+// ==================== FORM: KEY ====================
+function openForm(docId) {
+  const d = docId ? keys.find(x => x.docId === docId) : null;
+  document.getElementById('formTitle').textContent = d ? '✏️ Bearbeiten' : '➕ Neuer Schlüsseleintrag';
+  document.getElementById('fId').value        = d ? d.docId : '';
+  document.getElementById('fNachname').value  = d ? (d.nachname||'') : '';
+  document.getElementById('fVorname').value   = d ? (d.vorname||'') : '';
+  document.getElementById('fArt').value       = d ? (d.art||'') : '';
+  document.getElementById('fNummer').value    = d ? (d.nummer||'') : '';
+  document.getElementById('fPfand').value     = d ? (d.pfand||'') : '';
+  document.getElementById('fDatum').value     = d && d.datum ? isoDate(d.datum) : '';
+  document.getElementById('fTelefon').value   = d ? (d.telefon||'') : '';
+  document.getElementById('fBemerkung').value = d ? (d.bemerkung||'') : '';
+  const btn = document.getElementById('keySaveBtn');
+  btn.disabled = false; btn.textContent = '💾  Speichern';
+  document.getElementById('formOverlay').classList.add('open');
+}
+
+async function saveEntry() {
+  const docId = document.getElementById('fId').value;
+  const entry = {
+    nachname:  document.getElementById('fNachname').value.trim(),
+    vorname:   document.getElementById('fVorname').value.trim(),
+    art:       document.getElementById('fArt').value.trim(),
+    nummer:    document.getElementById('fNummer').value.trim(),
+    pfand:     document.getElementById('fPfand').value.trim(),
+    datum:     germanDate(document.getElementById('fDatum').value),
+    telefon:   document.getElementById('fTelefon').value.trim(),
+    bemerkung: document.getElementById('fBemerkung').value.trim(),
+  };
+  if (!entry.nachname && !entry.vorname) { alert('Bitte mindestens einen Namen eingeben.'); return; }
+  const btn = document.getElementById('keySaveBtn');
+  btn.disabled = true; btn.textContent = '⏳ Speichern …';
+  setSyncStatus('sync');
+  try {
+    if (docId) { await db.collection('schluessel').doc(docId).update(entry); showToast('✅ Gespeichert'); }
+    else       { await db.collection('schluessel').add(entry);               showToast('✅ Neuer Eintrag hinzugefügt'); }
+    closeOverlay('formOverlay');
+  } catch(e) { console.error(e); showToast('❌ Fehler beim Speichern'); }
+  finally    { btn.disabled = false; btn.textContent = '💾  Speichern'; }
+}
+
+// ==================== FORM: LOCK ====================
+function openLockForm(docId) {
+  const l = docId ? locks.find(x => x.docId === docId) : null;
+  document.getElementById('lockFormTitle').textContent = l ? '✏️ Schloss bearbeiten' : '➕ Neues Schloss';
+  document.getElementById('lfId').value        = l ? l.docId : '';
+  document.getElementById('lfNr').value        = l ? (l.nr||'') : '';
+  document.getElementById('lfName').value      = l ? (l.name||'') : '';
+  document.getElementById('lfAnzahl').value    = (l && l.anzahl!==null && l.anzahl!==undefined) ? l.anzahl : '';
+  document.getElementById('lfBemerkung').value = l ? (l.bemerkung||'') : '';
+  const btn = document.getElementById('lockSaveBtn');
+  btn.disabled = false; btn.textContent = '💾  Speichern';
+  document.getElementById('lockFormOverlay').classList.add('open');
+}
+
+async function saveLock() {
+  const docId = document.getElementById('lfId').value;
+  const anzahlRaw = document.getElementById('lfAnzahl').value.trim();
+  const entry = {
+    nr:        parseInt(document.getElementById('lfNr').value)||0,
+    name:      document.getElementById('lfName').value.trim(),
+    anzahl:    anzahlRaw !== '' ? parseInt(anzahlRaw) : null,
+    bemerkung: document.getElementById('lfBemerkung').value.trim(),
+    sort:      parseInt(document.getElementById('lfNr').value)||999,
+  };
+  if (!entry.name) { alert('Bitte einen Namen eingeben.'); return; }
+  const btn = document.getElementById('lockSaveBtn');
+  btn.disabled = true; btn.textContent = '⏳ Speichern …';
+  setSyncStatus('sync');
+  try {
+    if (docId) { await db.collection('schloesser').doc(docId).update(entry); showToast('✅ Schloss gespeichert'); }
+    else       { await db.collection('schloesser').add(entry);               showToast('✅ Neues Schloss hinzugefügt'); }
+    closeOverlay('lockFormOverlay');
+  } catch(e) { console.error(e); showToast('❌ Fehler beim Speichern'); }
+  finally    { btn.disabled = false; btn.textContent = '💾  Speichern'; }
+}
+
+// ==================== DELETE ====================
+function askDelete(docId, type) {
+  deleteTarget = docId; deleteType = type;
+  let name = '';
+  if (type === 'key') {
+    const d = keys.find(x => x.docId === docId);
+    name = [d.vorname, d.nachname].filter(Boolean).join(' ') || 'Eintrag';
+  } else {
+    const l = locks.find(x => x.docId === docId);
+    name = `Schloss Nr. ${l.nr} – ${l.name}`;
+  }
+  document.getElementById('confirmText').textContent = `"${name}" wirklich löschen?`;
+  const okBtn = document.getElementById('confirmOkBtn');
+  okBtn.disabled = false; okBtn.textContent = 'Löschen';
+  document.getElementById('confirmOverlay').classList.add('open');
+  closeOverlay('detailOverlay'); closeOverlay('lockDetailOverlay');
+}
+function closeConfirm() {
+  document.getElementById('confirmOverlay').classList.remove('open');
+  deleteTarget = null;
+}
+async function confirmDelete() {
+  if (!deleteTarget) { closeConfirm(); return; }
+  const okBtn = document.getElementById('confirmOkBtn');
+  okBtn.disabled = true; okBtn.textContent = '⏳ …';
+  setSyncStatus('sync');
+  try {
+    if (deleteType === 'key') await db.collection('schluessel').doc(deleteTarget).delete();
+    else                      await db.collection('schloesser').doc(deleteTarget).delete();
+    showToast('🗑 Gelöscht');
+  } catch(e) { console.error(e); showToast('❌ Fehler beim Löschen'); }
+  closeConfirm();
+}
+
+// ==================== STATS ====================
+function showStats() {
+  const activeKeys  = keys.filter(d => !isReturned(d)).length;
+  const retKeys     = keys.filter(d =>  isReturned(d)).length;
+  const totalPfand  = keys.reduce((s,d) => s+(parseFloat(d.pfand)||0), 0);
+  const totalLockKeys   = locks.reduce((s,l) => s+(l.anzahl||0), 0);
+  const missingLocks    = locks.filter(l => l.anzahl===null||l.anzahl===undefined||(l.bemerkung||'').toLowerCase()==='fehlt').length;
+  const byArt = {};
+  keys.forEach(d => { const a = normalizeArt(d.art)||'Sonstige'; byArt[a]=(byArt[a]||0)+1; });
+  const bars = Object.entries(byArt).sort((a,b)=>b[1]-a[1]).map(([art,count]) => {
+    const pct = Math.round(count/keys.length*100);
+    return `<div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:3px"><span>${art}</span><span style="color:var(--green-dark);font-weight:700">${count}</span></div>
+      <div style="background:#e8f5e9;border-radius:4px;height:7px"><div style="background:var(--green);height:100%;width:${pct}%;border-radius:4px"></div></div>
+    </div>`;
+  }).join('');
+  document.getElementById('statsContent').innerHTML = `
+    <div style="font-size:12px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">🔑 Schlüsselinhaber</div>
+    <div class="stats-grid">
+      <div class="stats-tile" style="background:#e8f5e9"><div class="big" style="color:var(--green-dark)">${keys.length}</div><div class="lbl">Einträge gesamt</div></div>
+      <div class="stats-tile" style="background:#e8f5e9"><div class="big" style="color:var(--green-dark)">${activeKeys}</div><div class="lbl">Aktiv</div></div>
+      <div class="stats-tile" style="background:#fff8e1"><div class="big" style="color:#e65100">${totalPfand}€</div><div class="lbl">Pfand gesamt</div></div>
+      <div class="stats-tile" style="background:#ffebee"><div class="big" style="color:var(--danger)">${retKeys}</div><div class="lbl">Abgegeben</div></div>
+    </div>
+    <div style="font-size:12px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 10px">Nach Schlüsselart</div>
+    ${bars}
+    <div style="font-size:12px;font-weight:700;color:var(--text-light);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 10px">🚪 Schlösser & Türen</div>
+    <div class="stats-grid">
+      <div class="stats-tile" style="background:#e3f2fd"><div class="big" style="color:var(--blue)">${locks.length}</div><div class="lbl">Schlösser</div></div>
+      <div class="stats-tile" style="background:#e3f2fd"><div class="big" style="color:var(--blue)">${totalLockKeys}</div><div class="lbl">Schlüssel ges.</div></div>
+    </div>
+    ${missingLocks>0?`<div style="margin-top:10px;padding:10px 14px;background:#fff3e0;border-radius:10px;font-size:13px;color:#e65100">⚠ ${missingLocks} Schloss/Schlösser mit fehlender Anzahl</div>`:''}
+  `;
+  document.getElementById('statsOverlay').classList.add('open');
+}
+
+// ==================== START ====================
+function startApp() {
+  document.getElementById('splash').classList.add('hidden');
+  document.getElementById('app').classList.add('visible');
+  setTimeout(() => document.getElementById('splash').style.display='none', 600);
+  showSpinner('Verbinde mit Datenbank …');
+  initFirestore();
+}
+</script>
+</body>
+</html>
